@@ -2,6 +2,9 @@ import genanki
 import configparser
 import random
 import time
+from chinese import ChineseAnalyzer
+from pyzhuyin import pinyin_to_zhuyin
+import csv
 
 def generate_id():
     return str(random.randrange(1 << 30, 1 << 31))
@@ -121,30 +124,80 @@ sentence_model = genanki.Model(
     )
 deck.add_model(sentence_model)
 
-test_word_note = genanki.Note(
-    model=word_model,
-    fields=[
-        str(time.time_ns()),
-        '可以',
-        'possible',
-        '[sound:MinecraftOof.mp3]',
-        'ㄎㄜˇ ㄧˇ',
-        '可能, 以下'
-    ]
-)
-deck.add_note(test_word_note)
+analyser = ChineseAnalyzer()
 
-test_sentence_note = genanki.Note(
-    model=sentence_model,
-    fields=[
-        str(time.time_ns()),
-        '你會講中文嗎?',
-        'Do you speak Mandarin?',
-        '[sound:MinecraftOof.mp3]',
-        'ㄋㄧˇ ㄏㄨㄟˋ ㄐㄧㄤˇ ㄓㄨㄥ ㄨㄣˊ ㄇㄚ˙'
-    ]
-)
-deck.add_note(test_sentence_note)
+with open('input.csv', encoding='utf-8') as input_file:
+    linereader = csv.reader(input_file)
+    for row in linereader:
+        if len(row) > 0:
+            hanzi = row[0]
+            analysis = analyser.parse(hanzi)
+            if len(analysis.tokens()) == 1: #Single Word
+                word_info = analysis[hanzi][0]
+                definition = ''
+                if len(row) == 2:
+                    definition = row[1]
+                else:
+                    definition = word_info.definitions.join(',') #TODO: Select Definition
+                audio = '[sound:MinecraftOof.mp3]' #TODO: Generate Audio
+                reading = ' '.join(word_info.pinyin) #TODO: Pinyin/Zhuyin selection
+                related_words = 'TODO' #TODO: This
+                word_note = genanki.Note(
+                    model=word_model,
+                    fields=[
+                        str(time.time_ns()),
+                        hanzi,
+                        definition,
+                        audio,
+                        reading,
+                        related_words
+                    ]
+                )
+                deck.add_note(word_note)
+            else: #Sentence
+                definition = ''
+                if len(row) == 2:
+                    definition = row[1]
+                else:
+                    definition = 'TODO' #TODO: Google Translate Integration
+                audio = '[sound:MinecraftOof.mp3]' #TODO: Generate Audio
+                reading = 'TODO' #TODO: Google Translate Integration
+                sentence_note = genanki.Note(
+                    model=sentence_model,
+                    fields=[
+                        str(time.time_ns()),
+                        hanzi,
+                        definition,
+                        audio,
+                        reading
+                    ]
+                )
+                deck.add_note(sentence_note)
+
+# test_word_note = genanki.Note(
+#     model=word_model,
+#     fields=[
+#         str(time.time_ns()),
+#         '可以',
+#         'possible',
+#         '[sound:MinecraftOof.mp3]',
+#         'ㄎㄜˇ ㄧˇ',
+#         '可能, 以下'
+#     ]
+# )
+# deck.add_note(test_word_note)
+
+# test_sentence_note = genanki.Note(
+#     model=sentence_model,
+#     fields=[
+#         str(time.time_ns()),
+#         '你會講中文嗎?',
+#         'Do you speak Mandarin?',
+#         '[sound:MinecraftOof.mp3]',
+#         'ㄋㄧˇ ㄏㄨㄟˋ ㄐㄧㄤˇ ㄓㄨㄥ ㄨㄣˊ ㄇㄚ˙'
+#     ]
+# )
+# deck.add_note(test_sentence_note)
 
 output_package = genanki.Package(deck)
 output_package.media_files = ['MinecraftOof.mp3']
