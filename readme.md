@@ -1,5 +1,6 @@
 A Python script to automate generating Anki cards for Mandarin Study.
 Generate cards for words or for full sentences.
+I'm using Microsoft Azure cloud services for translation, transliteration and text-to-speech services.
 
 Words:
 You Provide - Mandarin Word, Definition (optional, will be generated if missing)
