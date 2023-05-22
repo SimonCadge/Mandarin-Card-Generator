@@ -1,0 +1,1 @@
+A Python script to automate generating Anki cards for Mandarin Study
