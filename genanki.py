@@ -14,6 +14,8 @@ import unicodedata
 import re
 import os
 import shutil
+import openai
+from io import StringIO
 
 def generate_id():
     return str(random.randrange(1 << 30, 1 << 31))
@@ -75,6 +77,19 @@ if not config.has_option('mandarin', 'is_trad'):
 if not config.has_option('mandarin', 'reading_format'):
     config['mandarin']['reading_format'] = 'pinyin'
 
+if not config.has_section('openai'):
+    config.add_section('openai')
+
+openai_config = config['openai']
+
+if not config.has_option('openai', 'api_key'):
+    print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
+    config['openai']['api_key'] = input('OpenAi API Key: ')
+
+if not config.has_option('openai', 'organisation'):
+    print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
+    config['openai']['organisation'] = input('Organisation ID: ')
+
 with open('config.ini', 'w') as configfile:
     config.write(configfile)
 
@@ -83,6 +98,9 @@ text_translator = TextTranslationClient(endpoint=azure_config.get('translator_ap
 
 speech_config = speechsdk.SpeechConfig(subscription=azure_config.get('speech_api_key'), region=azure_config.get('region'))
 speech_config.speech_synthesis_voice_name = azure_config.get('speech_api_voice_name')
+
+openai.organization = openai_config.get('organisation')
+openai.api_key = openai_config.get('api_key')
 
 deck = genanki.Deck(
     model_config.getint('deck_id'),
@@ -97,7 +115,8 @@ word_model = genanki.Model(
         {'name': 'Hanzi'},
         {'name': 'Definition'},
         {'name': 'Audio'},
-        {'name': 'Reading'}
+        {'name': 'Reading'},
+        {'name': 'Similar Words'}
     ],
     templates=[
         {
@@ -107,6 +126,8 @@ word_model = genanki.Model(
                 {{FrontSide}}
                 <hr id=answer>
                 {{Hanzi}}<br>{{Reading}}<br>{{Definition}}
+                <hr id=answer>
+                {{Similar Words}}
             '''
         },
         {
@@ -116,6 +137,8 @@ word_model = genanki.Model(
                 {{FrontSide}}
                 <hr id=answer>
                 {{Reading}}<br>{{Definition}}<br>{{Audio}}
+                <hr id=answer>
+                {{Similar Words}}
             '''
         }
     ],
@@ -184,7 +207,7 @@ media_files = []
 
 analyser = ChineseAnalyzer()
 
-def build_word(hanzi, definition, audio, reading):
+def build_word(hanzi, definition, audio, reading, similar_words):
     word_note = genanki.Note(
                     model=word_model,
                     fields=[
@@ -192,7 +215,8 @@ def build_word(hanzi, definition, audio, reading):
                         hanzi,
                         definition,
                         audio,
-                        reading
+                        reading,
+                        similar_words
                     ]
                 )
     
@@ -262,6 +286,32 @@ def synthesize_text(text):
 
     return '[sound:' + normalised_text + ']'
 
+def generate_similar_words(word):
+    for i in range(0, 3):
+        try:
+            chat_completion = openai.ChatCompletion.create(model='gpt-3.5-turbo', messages=[
+                    {
+                        'role': 'system',
+                        'content': 'You are a Taiwanese Mandarin Study Assistant generating study material'
+                    },
+                    {
+                        'role': 'user',
+                        'content': 'Generate 5 words closely related to '+ word + ' which are used commonly in Taiwanese Mandarin. You should provide the words in Traditional Chinese, the readings in Pinyin, and the English Translation, all in CSV format.'
+                    }
+                ])
+            message = chat_completion.choices[0].message.content
+            linereader = csv.reader(StringIO(message))
+            rows = []
+            for row in linereader:
+                if reading_format != 'pinyin':
+                    row[1] = transcriptions.pinyin_to_zhuyin(row[1])
+                rows.append(', '.join(row))
+            message = '<br>'.join(rows)
+            return message
+        except openai.error.APIError:
+            print('OpenAI exception, retrying {0}th time'.format(i))
+    return '-'
+
 with open('input.csv', encoding='utf-8') as input_file:
     linereader = csv.reader(input_file)
     for row in linereader:
@@ -277,7 +327,8 @@ with open('input.csv', encoding='utf-8') as input_file:
                     definition = ', '.join(word_info.definitions)
                 audio = synthesize_text(hanzi)
                 reading = analysis.pinyin() if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(analysis.pinyin())
-                word_note = build_word(hanzi, definition, audio, reading)
+                similar_words = generate_similar_words(hanzi)
+                word_note = build_word(hanzi, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
             else: #Sentence
                 definition = ''
