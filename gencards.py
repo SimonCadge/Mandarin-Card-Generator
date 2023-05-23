@@ -3,9 +3,8 @@ import configparser
 import random
 import time
 from chinese import ChineseAnalyzer
-from dragonmapper import transcriptions
+from dragonmapper import transcriptions, hanzi
 import csv
-from azure.core.exceptions import HttpResponseError
 from azure.ai.translation.text import TextTranslationClient, TranslatorCredential
 from azure.ai.translation.text.models import InputTextItem
 import azure.cognitiveservices.speech as speechsdk
@@ -289,6 +288,7 @@ def synthesize_text(text):
 def generate_similar_words(word):
     for i in range(0, 3):
         try:
+            language = 'Traditional Mandarin' if is_trad else 'Simplified Mandarin'
             chat_completion = openai.ChatCompletion.create(model='gpt-3.5-turbo', messages=[
                     {
                         'role': 'system',
@@ -296,16 +296,23 @@ def generate_similar_words(word):
                     },
                     {
                         'role': 'user',
-                        'content': 'Generate 5 words closely related to '+ word + ' which are used commonly in Taiwanese Mandarin. You should provide the words in Traditional Chinese, the readings in Pinyin, and the English Translation, all in CSV format.'
+                        'content': 
+'''Generate 5 words closely related to """{0}""" which are used commonly in Taiwanese Mandarin.
+You should provide the words in {1}, the readings in Pinyin, and the English Translation, all in CSV format.'''.format(word, language)
                     }
                 ])
             message = chat_completion.choices[0].message.content
             linereader = csv.reader(StringIO(message))
             rows = []
             for row in linereader:
-                if reading_format != 'pinyin':
-                    row[1] = transcriptions.pinyin_to_zhuyin(row[1])
-                rows.append(', '.join(row))
+                if len(row) == 3:
+                    print(row)
+                    if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
+                        row[1] = transcriptions.pinyin_to_zhuyin(row[1])
+                    for i in range(0, len(row)):
+                        if ',' in row[i]:
+                            row[i] = '"' + row[i] + '"'
+                    rows.append(', '.join(row))
             message = '<br>'.join(rows)
             return message
         except openai.error.APIError:
@@ -316,29 +323,29 @@ with open('input.csv', encoding='utf-8') as input_file:
     linereader = csv.reader(input_file)
     for row in linereader:
         if len(row) > 0:
-            hanzi = row[0]
-            analysis = analyser.parse(hanzi, traditional=is_trad)
+            mandarin = row[0]
+            analysis = analyser.parse(mandarin, traditional=is_trad)
             if len(analysis.tokens()) == 1: #Single Word
-                word_info = analysis[hanzi][0]
+                word_info = analysis[mandarin][0]
                 definition = ''
                 if len(row) == 2:
                     definition = row[1]
                 else:
                     definition = ', '.join(word_info.definitions)
-                audio = synthesize_text(hanzi)
+                audio = synthesize_text(mandarin)
                 reading = analysis.pinyin() if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(analysis.pinyin())
-                similar_words = generate_similar_words(hanzi)
-                word_note = build_word(hanzi, definition, audio, reading, similar_words)
+                similar_words = generate_similar_words(mandarin)
+                word_note = build_word(mandarin, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
             else: #Sentence
                 definition = ''
                 if len(row) == 2:
                     definition = row[1]
                 else:
-                    definition = translate_hanzi(hanzi)
-                audio = synthesize_text(hanzi)
-                reading = transliterate_hanzi(hanzi)
-                sentence_note = build_sentence(hanzi, definition, audio, reading)
+                    definition = translate_hanzi(mandarin)
+                audio = synthesize_text(mandarin)
+                reading = transliterate_hanzi(mandarin)
+                sentence_note = build_sentence(mandarin, definition, audio, reading)
                 deck.add_note(sentence_note)
 
 output_package = genanki.Package(deck)

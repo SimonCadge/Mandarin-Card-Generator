@@ -51,6 +51,7 @@ is_trad = mandarin_config.get('is_trad')
 def generate_sentences(words):
     for i in range(0, 3):
         try:
+            language = 'Traditional Mandarin' if is_trad else 'Simplified Mandarin'
             chat_completion = openai.ChatCompletion.create(model='gpt-3.5-turbo', messages=[
                     {
                         'role': 'system',
@@ -58,10 +59,26 @@ def generate_sentences(words):
                     },
                     {
                         'role': 'user',
-                        'content': 'For each of the following words generate 2 example sentences in Traditional Chinese with English translation, and which demonstrate how they are used in Taiwanese Mandarin. The words are ' + words
+                        'content': 
+'''Create two example sentences for each of the following Mandarin words.
+CSV format with the following columns: {0} Sentence, Pinyin Transliteration, English Translation. Use the pipe(|) character as a delimiter. Don't 
+Example row: 她給我很大的安慰.|tā gěi wǒ hěn dà de ān wèi.|She gave me great comfort.
+Words: """{1}"""'''.format(language, words)
                     }
                 ])
             message = chat_completion.choices[0].message.content
+            linereader = csv.reader(StringIO(message), delimiter='|')
+            rows = []
+            for row in linereader:
+                if len(row) == 3:
+                    print(row)
+                    if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
+                        row[1] = transcriptions.pinyin_to_zhuyin(row[1].lower())
+                    for i in range(0, len(row)):
+                        if ',' in row[i]:
+                            row[i] = '"' + row[i] + '"'
+                    rows.append(','.join(row))
+            message = '\n'.join(rows)
             return message
         except openai.error.APIError:
             print('OpenAI exception, retrying {0}th time'.format(i))
