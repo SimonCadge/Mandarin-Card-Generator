@@ -76,18 +76,27 @@ if not config.has_option('mandarin', 'is_trad'):
 if not config.has_option('mandarin', 'reading_format'):
     config['mandarin']['reading_format'] = 'pinyin'
 
+is_trad = mandarin_config.getboolean('is_trad')
+reading_format = mandarin_config.get('reading_format')
+
 if not config.has_section('openai'):
     config.add_section('openai')
 
 openai_config = config['openai']
 
-if not config.has_option('openai', 'api_key'):
-    print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
-    config['openai']['api_key'] = input('OpenAi API Key: ')
+if not config.has_option('openai', 'is_chatgpt_enabled'):
+    config['openai']['is_chatgpt_enabled'] = 'false'
 
-if not config.has_option('openai', 'organisation'):
-    print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
-    config['openai']['organisation'] = input('Organisation ID: ')
+is_chatgpt_enabled = openai_config.getboolean('is_chatgpt_enabled')
+
+if is_chatgpt_enabled:
+    if not config.has_option('openai', 'api_key'):
+        print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
+        config['openai']['api_key'] = input('OpenAi API Key: ')
+
+    if not config.has_option('openai', 'organisation'):
+        print('Missing OpenAi Config. See here: https://platform.openai.com/docs/api-reference/authentication')
+        config['openai']['organisation'] = input('Organisation ID: ')
 
 with open('config.ini', 'w') as configfile:
     config.write(configfile)
@@ -97,9 +106,9 @@ text_translator = TextTranslationClient(endpoint=azure_config.get('translator_ap
 
 speech_config = speechsdk.SpeechConfig(subscription=azure_config.get('speech_api_key'), region=azure_config.get('region'))
 speech_config.speech_synthesis_voice_name = azure_config.get('speech_api_voice_name')
-
-openai.organization = openai_config.get('organisation')
-openai.api_key = openai_config.get('api_key')
+if is_chatgpt_enabled:
+    openai.organization = openai_config.get('organisation')
+    openai.api_key = openai_config.get('api_key')
 
 deck = genanki.Deck(
     model_config.getint('deck_id'),
@@ -199,9 +208,6 @@ sentence_model = genanki.Model(
     )
 deck.add_model(sentence_model)
 
-is_trad = mandarin_config.getboolean('is_trad')
-reading_format = mandarin_config.get('reading_format')
-
 try: #Make tmp directory if not exists
     os.makedirs('tmp')
 except OSError as e:
@@ -290,37 +296,38 @@ def synthesize_text(text):
     return '[sound:' + normalised_text + ']'
 
 def generate_similar_words(word):
-    for i in range(0, 3):
-        try:
-            language = 'Traditional Mandarin' if is_trad else 'Simplified Mandarin'
-            chat_completion = openai.ChatCompletion.create(model='gpt-3.5-turbo', messages=[
-                    {
-                        'role': 'system',
-                        'content': 'You are a Taiwanese Mandarin Study Assistant generating study material'
-                    },
-                    {
-                        'role': 'user',
-                        'content': 
-'''Generate 5 words closely related to """{0}""" which are used commonly in Taiwanese Mandarin.
-You should provide the words in {1}, the readings in Pinyin, and the English Translation, all in CSV format.'''.format(word, language)
-                    }
-                ])
-            message = chat_completion.choices[0].message.content
-            linereader = csv.reader(StringIO(message))
-            rows = []
-            for row in linereader:
-                if len(row) == 3:
-                    print(row)
-                    if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
-                        row[1] = transcriptions.pinyin_to_zhuyin(row[1])
-                    for i in range(0, len(row)):
-                        if ',' in row[i]:
-                            row[i] = '"' + row[i] + '"'
-                    rows.append(', '.join(row))
-            message = '<br>'.join(rows)
-            return message
-        except openai.error.APIError:
-            print('OpenAI exception, retrying {0}th time'.format(i))
+    if is_chatgpt_enabled:
+        for i in range(0, 3):
+            try:
+                language = 'Traditional Mandarin' if is_trad else 'Simplified Mandarin'
+                chat_completion = openai.ChatCompletion.create(model='gpt-3.5-turbo', messages=[
+                        {
+                            'role': 'system',
+                            'content': 'You are a Taiwanese Mandarin Study Assistant generating study material'
+                        },
+                        {
+                            'role': 'user',
+                            'content': 
+    '''Generate 5 words closely related to """{0}""" which are used commonly in Taiwanese Mandarin.
+    You should provide the words in {1}, the readings in Pinyin, and the English Translation, all in CSV format.'''.format(word, language)
+                        }
+                    ])
+                message = chat_completion.choices[0].message.content
+                linereader = csv.reader(StringIO(message))
+                rows = []
+                for row in linereader:
+                    if len(row) == 3:
+                        print(row)
+                        if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
+                            row[1] = transcriptions.pinyin_to_zhuyin(row[1])
+                        for i in range(0, len(row)):
+                            if ',' in row[i]:
+                                row[i] = '"' + row[i] + '"'
+                        rows.append(', '.join(row))
+                message = '<br>'.join(rows)
+                return message
+            except openai.error.APIError:
+                print('OpenAI exception, retrying {0}th time'.format(i))
     return '-'
 
 def find_all(source_string, search_char):

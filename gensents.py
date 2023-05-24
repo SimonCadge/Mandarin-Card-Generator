@@ -71,7 +71,6 @@ Words: """{1}"""'''.format(language, words)
             rows = []
             for row in linereader:
                 if len(row) == 3:
-                    print(row)
                     if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
                         row[1] = transcriptions.pinyin_to_zhuyin(row[1].lower())
                     for i in range(0, len(row)):
@@ -85,12 +84,16 @@ Words: """{1}"""'''.format(language, words)
     return '-'
 
 with open('input.csv', encoding='utf-8') as input_file:
-    data = input_file.read()
-    if data[-1] == '\n':
-        data[-1] = ''
-    data = data.replace('\n', ', ')
+    linereader = csv.reader(input_file)
+    words = []
+    for row in linereader:
+        if len(row) > 0:
+            mandarin = row[0]
+            analysis = analyser.parse(mandarin, traditional=is_trad)
+            if len(analysis.tokens()) == 1: #Single Word
+                words.append(mandarin)
 
-    generated_sentences = generate_sentences(data)
+    generated_sentences = generate_sentences(', '.join(words))
 
     with open('generated_sentences.csv', 'w', encoding='utf-8') as output_file:
         output_file.write(generated_sentences)
