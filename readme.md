@@ -17,6 +17,21 @@ ChatGPT functionality is optional and disabled by default. If you want to use it
 The second script for generating example sentences does work but it isn't much easier than just using the chat.openai.com portal to generate the sentences, and that online portal is free, so I would recommend doing that instead.  
 ChatGPT API - https://platform.openai.com/docs/api-reference/authentication  
 
+# Installation
+Steps to install and run these scripts:  
+1. Ensure you have Python3 installed on your machine. https://www.python.org/downloads/
+2. Clone the repository and navigate to the downloaded folder.
+3. Setup a venv virtual python environment.  
+    `python -m venv`
+4. Install required packages.  
+    `pip install -r requirements.txt`
+5. Create input.csv file and populate with words and sentences.
+6. Run gencards.py file  
+    `python gencards.py`
+7. This should have generated an output.apkg file.
+8. Open the Anki Desktop program.
+9. File -> Import -> output.apkg.
+
 # Generate Cards Script - gencards.py
 With this script you provide an input.csv file containing words, sentences or any combination of the two, and the script will then generate an anki .apkg file which can be imported into Anki.  
 The Anki package bundles the model for both words and sentences along with the actual note data, meaning that the styling and different cards are all included. Running the script a second time should create a package which is compatiable with the first, so importing it will simply add the new cards to the preexisting deck rather than creating a new deck. I am currently not certain what will happen if you modify the models or card definitions in Anki and then import a new package.  
