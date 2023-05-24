@@ -191,6 +191,10 @@ sentence_model = genanki.Model(
                 color: black;
                 background-color: white;
             }
+
+            .starred {
+                color: red;
+            }
         '''
     )
 deck.add_model(sentence_model)
@@ -319,6 +323,9 @@ You should provide the words in {1}, the readings in Pinyin, and the English Tra
             print('OpenAI exception, retrying {0}th time'.format(i))
     return '-'
 
+def find_all(source_string, search_char):
+    return [i for i, character in enumerate(source_string) if character == search_char]
+
 with open('input.csv', encoding='utf-8') as input_file:
     linereader = csv.reader(input_file)
     for row in linereader:
@@ -338,6 +345,14 @@ with open('input.csv', encoding='utf-8') as input_file:
                 word_note = build_word(mandarin, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
             else: #Sentence
+                star_locations = []
+                starred_hanzi = []
+                if '*' in mandarin:
+                    star_locations = find_all(mandarin, '*')
+                    for i in range(0, len(star_locations), 2):
+                        if len(star_locations) >= i+2:
+                            starred_hanzi.append(mandarin[star_locations[i]+1:star_locations[i+1]])
+                    mandarin = mandarin.replace('*', '')
                 definition = ''
                 if len(row) == 2:
                     definition = row[1]
@@ -345,6 +360,16 @@ with open('input.csv', encoding='utf-8') as input_file:
                     definition = translate_hanzi(mandarin)
                 audio = synthesize_text(mandarin)
                 reading = transliterate_hanzi(mandarin)
+                if len(starred_hanzi) != 0:
+                    starred_reading = map(lambda selected_character: hanzi.to_pinyin(selected_character) if reading_format == 'pinyin' else hanzi.to_zhuyin(selected_character), starred_hanzi)
+                    for selected_character in starred_hanzi:
+                        i = mandarin.index(selected_character)
+                        output_string = mandarin[:i] + '<span class=starred>' + selected_character + '</span>' + mandarin[i + len(selected_character):]
+                        mandarin = output_string
+                    for selected_character in starred_reading:
+                        i = reading.index(selected_character)
+                        output_string = reading[:i] + '<span class=starred>' + selected_character + '</span>' + reading[i + len(selected_character):]
+                        reading = output_string
                 sentence_note = build_sentence(mandarin, definition, audio, reading)
                 deck.add_note(sentence_note)
 
