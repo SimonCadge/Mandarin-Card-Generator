@@ -15,6 +15,7 @@ import os
 import shutil
 import openai
 from io import StringIO
+import logging
 
 def generate_id():
     return str(random.randrange(1 << 30, 1 << 31))
@@ -109,6 +110,17 @@ speech_config.speech_synthesis_voice_name = azure_config.get('speech_api_voice_n
 if is_chatgpt_enabled:
     openai.organization = openai_config.get('organisation')
     openai.api_key = openai_config.get('api_key')
+
+logger = logging.getLogger('gencards')
+logger.setLevel(logging.INFO)
+
+logfile = logging.FileHandler('errlog.txt')
+logfile.setLevel(logging.ERROR)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logfile.setFormatter(formatter)
+
+logger.addHandler(logfile)
 
 deck = genanki.Deck(
     model_config.getint('deck_id'),
@@ -319,22 +331,31 @@ def generate_similar_words(word):
                     if len(row) == 3:
                         print(row)
                         if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
-                            row[1] = transcriptions.pinyin_to_zhuyin(row[1])
+                            try:
+                                row[1] = transcriptions.pinyin_to_zhuyin(row[1])
+                            except ValueError as e:
+                                logger.exception(e)
+                                logger.info('Error converting Pinyin to Zhuyin. Will stick with Pinyin for now.')
+                                pass
                         for i in range(0, len(row)):
                             if ',' in row[i]:
                                 row[i] = '"' + row[i] + '"'
                         rows.append(', '.join(row))
                 message = '<br>'.join(rows)
                 return message
-            except openai.error.APIError:
-                print('OpenAI exception, retrying {0}th time'.format(i))
+            except openai.error.APIError as e:
+                logger.exception(e)
+                logger.info('OpenAI exception, retrying {0}th time'.format(i))
+            except openai.error.RateLimitError:
+                logger.info('Reached OpenAI rate limit of 3 per minute. Waiting one minute before trying again.')
+                time.sleep(60)
     return '-'
 
 def find_all(source_string, search_char):
     return [i for i, character in enumerate(source_string) if character == search_char]
 
 with open('input.csv', encoding='utf-8') as input_file:
-    linereader = csv.reader(input_file)
+    linereader = csv.reader(input_file, skipinitialspace=True)
     for row in linereader:
         if len(row) > 0:
             mandarin = row[0]

@@ -84,7 +84,7 @@ Words: """{1}"""'''.format(language, words)
     return '-'
 
 with open('input.csv', encoding='utf-8') as input_file:
-    linereader = csv.reader(input_file)
+    linereader = csv.reader(input_file, skipinitialspace=True)
     words = []
     for row in linereader:
         if len(row) > 0:
