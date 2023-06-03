@@ -361,14 +361,19 @@ with open('input.csv', encoding='utf-8') as input_file:
             mandarin = row[0]
             analysis = analyser.parse(mandarin, traditional=is_trad)
             if len(analysis.tokens()) == 1: #Single Word
+                reading = ''
                 word_info = analysis[mandarin][0]
                 definition = ''
                 if len(row) == 2:
                     definition = row[1]
-                else:
+                elif word_info.definitions is not None:
                     definition = ', '.join(word_info.definitions)
+                else:
+                    definition = translate_hanzi(mandarin)
+                    reading = transliterate_hanzi(mandarin)
                 audio = synthesize_text(mandarin)
-                reading = analysis.pinyin() if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(analysis.pinyin())
+                if reading == '':
+                    reading = analysis.pinyin() if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(analysis.pinyin())
                 similar_words = generate_similar_words(mandarin)
                 word_note = build_word(mandarin, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
