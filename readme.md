@@ -34,7 +34,7 @@ Steps to install and run these scripts:
 
 # Generate Cards Script - gencards.py
 With this script you provide an input.csv file containing words, sentences or any combination of the two, and the script will then generate an anki .apkg file which can be imported into Anki.  
-The Anki package bundles the model for both words and sentences along with the actual note data, meaning that the styling and different cards are all included. Running the script a second time should create a package which is compatiable with the first, so importing it will simply add the new cards to the preexisting deck rather than creating a new deck. I am currently not certain what will happen if you modify the models or card definitions in Anki and then import a new package.  
+The Anki package bundles the model for both words and sentences along with the actual note data, meaning that the styling and different cards are all included. Running the script a second time should create a package which is compatiable with the first, so importing it will simply add the new cards to the preexisting deck rather than creating a new deck.
 
 ## Example Input file:  
 ![Example Input csv!](/assets/ExampleInput.png)  
