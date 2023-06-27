@@ -1,3 +1,4 @@
+import sys
 import genanki
 import configparser
 import random
@@ -112,14 +113,23 @@ if is_chatgpt_enabled:
     openai.api_key = openai_config.get('api_key')
 
 logger = logging.getLogger('gencards')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
-logfile = logging.FileHandler('errlog.txt')
-logfile.setLevel(logging.ERROR)
+stdout = logging.StreamHandler(sys.stdout)
+stdout.setLevel(logging.INFO)
+
+errlogfile = logging.FileHandler('errlog.txt', mode='w', encoding='utf-8')
+errlogfile.setLevel(logging.ERROR)
+
+logfile = logging.FileHandler('log.txt', mode='w', encoding='utf-8')
+logfile.setLevel(logging.DEBUG)
 
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+errlogfile.setFormatter(formatter)
 logfile.setFormatter(formatter)
 
+logger.addHandler(stdout)
+logger.addHandler(errlogfile)
 logger.addHandler(logfile)
 
 deck = genanki.Deck(
@@ -258,6 +268,7 @@ def build_sentence(hanzi, definition, audio, reading):
     return sentence_note
 
 def transliterate_hanzi(hanzi):
+    logger.debug('Transliterating Hanzi')
     language = 'zh-Hant' if is_trad else 'zh-Hans'
     from_script = 'Hant' if is_trad else 'Hans'
     to_script = 'Latn'
@@ -269,9 +280,11 @@ def transliterate_hanzi(hanzi):
                                                                             to_script=to_script)
     transliteration = transliteration_response[0] if transliteration_response else None
     reading = transliteration.text if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(transliteration.text)
+    logger.debug('Transliteration Successful: {0}'.format(reading))
     return reading
 
 def translate_hanzi(hanzi):
+    logger.debug('Translating Hanzi')
     from_script = 'Hant' if is_trad else 'Hans'
     from_language = 'zh-Hant' if is_trad else 'zh_Hans'
     target_languages = ['en']
@@ -286,9 +299,11 @@ def translate_hanzi(hanzi):
         first_translation = translation.translations[0]
         if first_translation:
             definition = first_translation.text
+    logger.debug('Translation Successful: {0}'.format(definition))
     return definition
 
 def synthesize_text(text):
+    logger.debug('Synthesizing text')
     # https://github.com/django/django/blob/master/django/utils/text.py
     normalised_text = unicodedata.normalize('NFKC', text)
     normalised_text = re.sub(r'[^\w\s-]', '', normalised_text.lower())
@@ -305,10 +320,12 @@ def synthesize_text(text):
 
     media_files.append(str(path))
 
+    logger.debug('Synthesized successfully, written to file {0}'.format(str(path)))
     return '[sound:' + normalised_text + ']'
 
 def generate_similar_words(word):
     if is_chatgpt_enabled:
+        logger.debug('Generating Similar Words with ChatGPT')
         for i in range(0, 3):
             try:
                 language = 'Traditional Mandarin' if is_trad else 'Simplified Mandarin'
@@ -329,26 +346,27 @@ def generate_similar_words(word):
                 rows = []
                 for row in linereader:
                     if len(row) == 3:
-                        print(row)
                         if reading_format != 'pinyin' and hanzi.has_chinese(row[0]):
                             try:
                                 row[1] = transcriptions.pinyin_to_zhuyin(row[1])
                             except ValueError as e:
                                 logger.exception(e)
-                                logger.info('Error converting Pinyin to Zhuyin. Will stick with Pinyin for now.')
+                                logger.warning('Error converting Pinyin to Zhuyin. Will stick with Pinyin for now.')
                                 pass
                         for i in range(0, len(row)):
                             if ',' in row[i]:
                                 row[i] = '"' + row[i] + '"'
                         rows.append(', '.join(row))
                 message = '<br>'.join(rows)
+                logger.debug('Similar Words Generated: {0}'.format(message))
                 return message
             except openai.error.APIError as e:
                 logger.exception(e)
-                logger.info('OpenAI exception, retrying {0}th time'.format(i))
+                logger.warning('OpenAI exception, info written to errlog, retrying {0}th time'.format(i))
             except openai.error.RateLimitError:
-                logger.info('Reached OpenAI rate limit of 3 per minute. Waiting one minute before trying again.')
+                logger.warning('Reached OpenAI rate limit of 3 per minute. Waiting one minute before trying again.')
                 time.sleep(60)
+    logger.warning('Retried unsuccessfully three times, giving up and returning -')
     return '-'
 
 def find_all(source_string, search_char):
@@ -361,6 +379,7 @@ with open('input.csv', encoding='utf-8') as input_file:
             mandarin = row[0]
             analysis = analyser.parse(mandarin, traditional=is_trad)
             if len(analysis.tokens()) == 1: #Single Word
+                logger.info('Found Word: {0}'.format(mandarin))
                 reading = ''
                 word_info = analysis[mandarin][0]
                 definition = ''
@@ -378,6 +397,7 @@ with open('input.csv', encoding='utf-8') as input_file:
                 word_note = build_word(mandarin, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
             else: #Sentence
+                logger.info('Found Sentence: {0}'.format(mandarin))
                 star_locations = []
                 starred_hanzi = []
                 if '*' in mandarin:
@@ -386,6 +406,7 @@ with open('input.csv', encoding='utf-8') as input_file:
                         if len(star_locations) >= i+2:
                             starred_hanzi.append(mandarin[star_locations[i]+1:star_locations[i+1]])
                     mandarin = mandarin.replace('*', '')
+                    logger.debug('Found and extracted starred words: {0}'.format(starred_hanzi))
                 definition = ''
                 if len(row) == 2:
                     definition = row[1]
@@ -394,17 +415,27 @@ with open('input.csv', encoding='utf-8') as input_file:
                 audio = synthesize_text(mandarin)
                 reading = transliterate_hanzi(mandarin)
                 if len(starred_hanzi) != 0:
-                    starred_reading = map(lambda selected_character: hanzi.to_pinyin(selected_character) if reading_format == 'pinyin' else hanzi.to_zhuyin(selected_character), starred_hanzi)
+                    starred_reading = map(lambda selected_character: hanzi.to_pinyin(selected_character, all_readings=True)[1:-1].split('/') if reading_format == 'pinyin' else hanzi.to_zhuyin(selected_character, all_readings=True)[1:-1].split('/'), starred_hanzi)
                     for selected_character in starred_hanzi:
                         i = mandarin.index(selected_character)
                         output_string = mandarin[:i] + '<span class=starred>' + selected_character + '</span>' + mandarin[i + len(selected_character):]
                         mandarin = output_string
                     for selected_character in starred_reading:
-                        i = reading.index(selected_character)
-                        output_string = reading[:i] + '<span class=starred>' + selected_character + '</span>' + reading[i + len(selected_character):]
-                        reading = output_string
+                        i = -1
+                        correct_reading = 0
+                        for one_reading in selected_character:
+                            try:
+                                i = reading.index(one_reading)
+                                break
+                            except ValueError:
+                                logger.debug('Reading wasnt found, checking other readings')
+                                correct_reading += 1
+                        if i >= 0:
+                            output_string = reading[:i] + '<span class=starred>' + selected_character[correct_reading] + '</span>' + reading[i + len(selected_character[correct_reading]):]
+                            reading = output_string
                 sentence_note = build_sentence(mandarin, definition, audio, reading)
                 deck.add_note(sentence_note)
+            logger.info('')
 
 output_package = genanki.Package(deck)
 output_package.media_files = media_files
