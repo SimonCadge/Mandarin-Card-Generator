@@ -278,8 +278,14 @@ def transliterate_hanzi(hanzi):
                                                                             language=language,
                                                                             from_script=from_script,
                                                                             to_script=to_script)
-    transliteration = transliteration_response[0] if transliteration_response else None
-    reading = transliteration.text if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(transliteration.text)
+    transliteration = transliteration_response[0]
+    reading = transliteration.text
+    if reading_format == 'zhuyin':
+        try:
+            reading = transcriptions.pinyin_to_zhuyin(transliteration.text)
+        except Exception as e:
+            logger.error(e)
+            logger.warning("Tried and Failed to transliterate Pinyin to Zhuyin. Falling back to Pinyin.")
     logger.debug('Transliteration Successful: {0}'.format(reading))
     return reading
 
@@ -363,7 +369,8 @@ def generate_similar_words(word):
             except openai.error.APIError as e:
                 logger.exception(e)
                 logger.warning('OpenAI exception, info written to errlog, retrying {0}th time'.format(i))
-            except openai.error.RateLimitError:
+            except openai.error.RateLimitError as e:
+                logger.exception(e)
                 logger.warning('Reached OpenAI rate limit of 3 per minute. Waiting one minute before trying again.')
                 time.sleep(60)
     logger.warning('Retried unsuccessfully three times, giving up and returning -')
@@ -392,7 +399,13 @@ with open('input.csv', encoding='utf-8') as input_file:
                     reading = transliterate_hanzi(mandarin)
                 audio = synthesize_text(mandarin)
                 if reading == '':
-                    reading = analysis.pinyin() if reading_format == 'pinyin' else transcriptions.pinyin_to_zhuyin(analysis.pinyin())
+                    reading = analysis.pinyin()
+                    if reading_format == 'zhuyin':
+                        try:
+                            reading = transcriptions.pinyin_to_zhuyin(analysis.pinyin())
+                        except Exception as e:
+                            logger.error(e)
+                            logger.warning("transliteration.text")
                 similar_words = generate_similar_words(mandarin)
                 word_note = build_word(mandarin, definition, audio, reading, similar_words)
                 deck.add_note(word_note)
